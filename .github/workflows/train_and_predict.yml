@@ -1,0 +1,33 @@
+name: Train and Predict
+
+on:
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  run_script:
+    runs-on: ubuntu-latest  # Use the latest Ubuntu environment
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'  # Specify the Python version you want to use
+
+      - name: Install dependencies
+        run: |
+          pip install pandas scikit-learn xgboost joblib requests
+
+      - name: Run training and prediction script
+        run: |
+          python train_and_predict.py
+
+      - name: Commit and push predictions database and models
+        run: |
+          git config --global user.name "your-github-username"
+          git config --global user.email "your-email@example.com"
+          git add data/predictions.db models/*
+          git commit -m "Update predictions database and trained models" || echo "No changes to commit"
+          git push
