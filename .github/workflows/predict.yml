@@ -21,13 +21,18 @@ jobs:
           pip install pandas scikit-learn xgboost joblib
 
       - name: Run prediction script
-        run: python predict.py
+        run: |
+          python predict.py || (echo "Prediction script failed" && exit 1)
 
       - name: Commit and push predictions
         run: |
           git config --global user.name "chiragpalan"
           git config --global user.email "your-email@example.com"
-          git add -A  # Add all changes, including untracked files
+          
+          # Pull latest changes from the remote
+          git pull origin main || echo "No changes to pull or already up-to-date"
+
+          git add -A  # Add all new files
           git commit -m "Add predictions database" || echo "No changes to commit"
           git push origin HEAD:main
         env:
