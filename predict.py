@@ -5,7 +5,7 @@ import joblib
 from sklearn.preprocessing import StandardScaler
 
 DATA_DB = 'joined_data.db'
-MODELS_DIR = 'models'
+MODELS_DIR = 'models_v1'
 PREDICTIONS_DB = 'data_v1/predictions.db'
 
 os.makedirs('data', exist_ok=True)
