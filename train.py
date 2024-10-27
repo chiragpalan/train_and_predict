@@ -10,7 +10,7 @@ import requests
 
 # Set paths
 DATA_DB = 'joined_data.db'
-MODELS_DIR = 'models'
+MODELS_DIR = 'models_v1'
 
 # Ensure the models folder exists
 os.makedirs(MODELS_DIR, exist_ok=True)
