@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler
 
 DATA_DB = 'joined_data.db'
 MODELS_DIR = 'models'
-PREDICTIONS_DB = 'data/predictions.db'
+PREDICTIONS_DB = 'data_v1/predictions.db'
 
 os.makedirs('data', exist_ok=True)
 
