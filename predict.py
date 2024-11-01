@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 import joblib
 import requests
+import numpy as np
 
 # Paths and configurations
 DATA_DB = 'joined_data.db'
@@ -42,6 +43,11 @@ def load_data_from_table(db_path, table_name):
     conn.close()
     return df
 
+def validate_and_clean_data(X):
+    """Remove infinite and NaN values and replace them with zeroes."""
+    X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
+    return X
+
 def extract_predictions_from_estimators(model, X_scaled):
     """Extract predictions and calculate percentiles, handling different model structures."""
     all_preds = []
@@ -49,7 +55,8 @@ def extract_predictions_from_estimators(model, X_scaled):
     # Check if model has estimators (like RandomForest or GradientBoosting)
     if hasattr(model, 'estimators_'):
         for est in model.estimators_:
-            if hasattr(est, 'predict'):
+            # Ensure the estimator has a predict method and is not an ndarray
+            if hasattr(est, 'predict') and not isinstance(est, np.ndarray):
                 all_preds.append(est.predict(X_scaled))
             else:
                 print(f"Skipping an estimator without 'predict': {type(est)}")
@@ -88,6 +95,7 @@ def main():
         predictions_df = pd.DataFrame({'Date': dates, 'Actual': y_actual})
 
         scaler = StandardScaler()
+        X = validate_and_clean_data(X)
         X_scaled = scaler.fit_transform(X)
 
         for model_type in ['random_forest', 'gradient_boosting', 'xgboost']:
