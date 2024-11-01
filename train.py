@@ -42,9 +42,9 @@ def load_data_from_table(db_path, table_name):
 
 def check_and_clean_data(X):
     """Check for infinity, NaN, or very large values in X and clean them."""
-    if not np.isfinite(X).all():
+    if not np.isfinite(X.values).all():
         print("Warning: X contains NaN, infinity, or very large values. Cleaning data...")
-        X = np.nan_to_num(X, nan=0.0, posinf=1e10, neginf=-1e10)
+        X = X.replace([np.inf, -np.inf], np.nan).fillna(0)  # Replace infinities with NaN, then fill NaN with 0
     return X
 
 def train_model(X_train, y_train, model_type):
