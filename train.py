@@ -7,6 +7,7 @@ from xgboost import XGBRegressor
 from sklearn.preprocessing import StandardScaler
 import joblib
 import requests
+import numpy as np
 
 # Set paths
 DATA_DB = 'joined_data.db'
@@ -39,6 +40,13 @@ def load_data_from_table(db_path, table_name):
     conn.close()
     return df
 
+def check_and_clean_data(X):
+    """Check for infinity, NaN, or very large values in X and clean them."""
+    if not np.isfinite(X).all():
+        print("Warning: X contains NaN, infinity, or very large values. Cleaning data...")
+        X = np.nan_to_num(X, nan=0.0, posinf=1e10, neginf=-1e10)
+    return X
+
 def train_model(X_train, y_train, model_type):
     if model_type == 'random_forest':
         model = RandomForestRegressor(n_estimators=800)
@@ -67,12 +75,15 @@ def main():
         if 'date' in df.index.names:
             df.reset_index(inplace=True)
 
-        X = df.drop(columns=['Date', 'target_n7d'])
+        X = df.drop(columns=['Date', 'target_n7d'], errors='ignore')
         y = df['target_n7d']
 
         X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, shuffle=True)
         scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
+        
+        # Clean X_train for any NaN or infinity values
+        X_train_cleaned = check_and_clean_data(X_train)
+        X_train_scaled = scaler.fit_transform(X_train_cleaned)
 
         for model_type in ['random_forest', 'gradient_boosting', 'xgboost']:
             model = train_model(X_train_scaled, y_train, model_type)
