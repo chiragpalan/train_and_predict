@@ -45,32 +45,35 @@ def clean_data(X):
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     return X
 
-def extract_predictions_from_estimators(model, X_scaled):
-    """Extract predictions from all weak learners in the ensemble model."""
-    all_preds = []
-
-    # Handle the ensemble model
-    if hasattr(model, 'estimators_'):
-        for est in model.estimators_:
-            if hasattr(est, "predict") and callable(est.predict):
-                preds = est.predict(X_scaled)
-                all_preds.append(preds)
-            else:
-                print(f"Skipping an estimator without 'predict' or incorrect structure: {type(est)}")
-
-    if not all_preds:
-        raise ValueError("No valid estimators with 'predict' method found.")
-
-    all_preds_df = pd.DataFrame(all_preds).T  # Transpose to match input shape
-    p5 = all_preds_df.quantile(0.05, axis=1)
-    p95 = all_preds_df.quantile(0.95, axis=1)
+def extract_percentiles(predictions):
+    """Calculate 5th and 95th percentiles from an array of predictions."""
+    p5 = np.percentile(predictions, 5, axis=0)
+    p95 = np.percentile(predictions, 95, axis=0)
     return p5, p95
 
-def save_predictions_to_db(predictions_df, table_name):
+def random_forest_predictions(model, X_scaled):
+    all_preds = [est.predict(X_scaled) for est in model.estimators_ if hasattr(est, 'predict')]
+    p5, p95 = extract_percentiles(all_preds)
+    main_prediction = model.predict(X_scaled)
+    return main_prediction, p5, p95
+
+def gradient_boosting_predictions(model, X_scaled):
+    all_preds = [est.predict(X_scaled) for est in model.estimators_ if hasattr(est, 'predict')]
+    p5, p95 = extract_percentiles(all_preds)
+    main_prediction = model.predict(X_scaled)
+    return main_prediction, p5, p95
+
+def xgboost_predictions(model, X_scaled):
+    main_prediction = model.predict(X_scaled)
+    p5 = np.percentile(main_prediction, 5)
+    p95 = np.percentile(main_prediction, 95)
+    return main_prediction, p5, p95
+
+def save_predictions_to_db(predictions_df):
     conn = sqlite3.connect(PREDICTIONS_DB)
-    predictions_df.to_sql(f'predictions_{table_name}', conn, if_exists='replace', index=False)
+    predictions_df.to_sql('predictions_all_tables', conn, if_exists='append', index=False)
     conn.close()
-    print(f"Predictions saved to database for table: {table_name}")
+    print("Predictions saved to database.")
 
 def process_table(table):
     df = load_data_from_table(DATA_DB, table).dropna()
@@ -81,13 +84,18 @@ def process_table(table):
     y_actual = df['target_n7d']
     dates = df['Date']
 
-    predictions_df = pd.DataFrame({'Date': dates, 'Actual': y_actual})
+    predictions_df = pd.DataFrame({'Table_Name': table, 'Date': dates, 'Actual': y_actual})
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     X_scaled = clean_data(X_scaled)  # Clean the scaled data
 
     model_types = ['random_forest', 'gradient_boosting', 'xgboost']
+    prediction_functions = {
+        'random_forest': random_forest_predictions,
+        'gradient_boosting': gradient_boosting_predictions,
+        'xgboost': xgboost_predictions
+    }
 
     for model_type in model_types:
         model_path = os.path.join(MODELS_DIR, f"{table}_{model_type}.joblib")
@@ -99,28 +107,17 @@ def process_table(table):
 
         model = joblib.load(model_path)
 
-        # Debug: Print the loaded model type and structure
-        print(f"Loaded model type: {type(model)}")
-
-        predictions = model.predict(X_scaled)
-        predictions_df[f'Predicted_{model_type}'] = predictions
-
-        # Compute percentiles for Random Forest and Gradient Boosting (ensemble models)
+        # Predict using the appropriate function
+        prediction_func = prediction_functions[model_type]
         try:
-            if model_type in ['random_forest', 'gradient_boosting']:
-                p5, p95 = extract_predictions_from_estimators(model, X_scaled)
-                predictions_df[f'5th_Percentile_{model_type}'] = p5
-                predictions_df[f'95th_Percentile_{model_type}'] = p95
-            elif model_type == 'xgboost':
-                # XGBoost may not have 'estimators_', so we can predict directly
-                p5 = np.percentile(predictions, 5)
-                p95 = np.percentile(predictions, 95)
-                predictions_df[f'5th_Percentile_{model_type}'] = p5
-                predictions_df[f'95th_Percentile_{model_type}'] = p95
-        except ValueError as e:
-            print(f"Warning: {e} for model {model_type}")
+            main_prediction, p5, p95 = prediction_func(model, X_scaled)
+            predictions_df[f'Predicted_{model_type}'] = main_prediction
+            predictions_df[f'5th_Percentile_{model_type}'] = p5
+            predictions_df[f'95th_Percentile_{model_type}'] = p95
+        except Exception as e:
+            print(f"Error predicting with {model_type}: {e}")
 
-    save_predictions_to_db(predictions_df, table)
+    save_predictions_to_db(predictions_df)
 
 def main():
     download_database()
