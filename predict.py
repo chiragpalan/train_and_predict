@@ -48,11 +48,10 @@ def validate_and_clean_data(X):
     X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
     return X
 
-def extract_predictions_from_estimators(model, X_scaled):
-    """Extract predictions and calculate percentiles, handling different model structures."""
+def extract_percentiles(model, X_scaled):
+    """Extract predictions and calculate 5th and 95th percentiles for models with estimators."""
     all_preds = []
 
-    # Check if model has estimators (like RandomForest or GradientBoosting)
     if hasattr(model, 'estimators_'):
         for est in model.estimators_:
             # Ensure the estimator has a predict method and is not an ndarray
@@ -64,7 +63,6 @@ def extract_predictions_from_estimators(model, X_scaled):
     if not all_preds:
         raise ValueError("No valid estimators with 'predict' method found.")
 
-    # Convert predictions to a DataFrame and calculate percentiles
     all_preds_df = pd.DataFrame(all_preds).T  # Transpose to match input shape
     p5 = all_preds_df.quantile(0.05, axis=1)
     p95 = all_preds_df.quantile(0.95, axis=1)
@@ -109,14 +107,14 @@ def main():
             predictions = model.predict(X_scaled)
             predictions_df[f'Predicted_{model_type}'] = predictions
 
-            # Handle models with or without individual estimators
-            try:
-                if hasattr(model, 'estimators_'):
-                    p5, p95 = extract_predictions_from_estimators(model, X_scaled)
+            # Handle models with individual estimators and calculate percentiles if applicable
+            if model_type in ['gradient_boosting', 'xgboost']:
+                try:
+                    p5, p95 = extract_percentiles(model, X_scaled)
                     predictions_df[f'5th_Percentile_{model_type}'] = p5
                     predictions_df[f'95th_Percentile_{model_type}'] = p95
-            except ValueError as e:
-                print(f"Warning: {e} for model {model_type}")
+                except ValueError as e:
+                    print(f"Warning: {e} for model {model_type}")
 
         save_predictions_to_db(predictions_df, table)
 
