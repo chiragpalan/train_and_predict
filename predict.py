@@ -58,9 +58,11 @@ def random_forest_predictions(model, X_scaled):
     return main_prediction, p5, p95
 
 def gradient_boosting_predictions(model, X_scaled):
+    print("chirag")
     all_preds = [est.predict(X_scaled) for est in model.estimators_ if hasattr(est, 'predict')]
     p5, p95 = extract_percentiles(all_preds)
     main_prediction = model.predict(X_scaled)
+    print("palan")
     return main_prediction, p5, p95
 
 def xgboost_predictions(model, X_scaled):
