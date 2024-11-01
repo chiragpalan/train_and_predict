@@ -46,11 +46,15 @@ def clean_data(X):
     return X
 
 def extract_predictions_from_estimators(model, X_scaled):
+    """Extract predictions from all weak learners in the ensemble model."""
     all_preds = []
+
+    # Handle the ensemble model
     if hasattr(model, 'estimators_'):
         for est in model.estimators_:
             if hasattr(est, "predict") and callable(est.predict):
-                all_preds.append(est.predict(X_scaled))
+                preds = est.predict(X_scaled)
+                all_preds.append(preds)
             else:
                 print(f"Skipping an estimator without 'predict' or incorrect structure: {type(est)}")
 
@@ -83,7 +87,9 @@ def process_table(table):
     X_scaled = scaler.fit_transform(X)
     X_scaled = clean_data(X_scaled)  # Clean the scaled data
 
-    for model_type in ['random_forest', 'gradient_boosting', 'xgboost']:
+    model_types = ['random_forest', 'gradient_boosting', 'xgboost']
+
+    for model_type in model_types:
         model_path = os.path.join(MODELS_DIR, f"{table}_{model_type}.joblib")
         print(f"Loading model from: {model_path}")
 
@@ -99,9 +105,16 @@ def process_table(table):
         predictions = model.predict(X_scaled)
         predictions_df[f'Predicted_{model_type}'] = predictions
 
+        # Compute percentiles for Random Forest and Gradient Boosting (ensemble models)
         try:
-            if hasattr(model, 'estimators_'):
+            if model_type in ['random_forest', 'gradient_boosting']:
                 p5, p95 = extract_predictions_from_estimators(model, X_scaled)
+                predictions_df[f'5th_Percentile_{model_type}'] = p5
+                predictions_df[f'95th_Percentile_{model_type}'] = p95
+            elif model_type == 'xgboost':
+                # XGBoost may not have 'estimators_', so we can predict directly
+                p5 = np.percentile(predictions, 5)
+                p95 = np.percentile(predictions, 95)
                 predictions_df[f'5th_Percentile_{model_type}'] = p5
                 predictions_df[f'95th_Percentile_{model_type}'] = p95
         except ValueError as e:
