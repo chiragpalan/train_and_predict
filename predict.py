@@ -54,7 +54,6 @@ def extract_percentiles(model, X_scaled):
 
     if hasattr(model, 'estimators_'):
         for est in model.estimators_:
-            # Ensure the estimator has a predict method and is not an ndarray
             if hasattr(est, 'predict') and not isinstance(est, np.ndarray):
                 all_preds.append(est.predict(X_scaled))
             else:
@@ -74,6 +73,33 @@ def save_predictions_to_db(predictions_df, table_name):
     predictions_df.to_sql(f'predictions_{table_name}', conn, if_exists='replace', index=False)
     conn.close()
     print(f"Predictions saved to database for table: {table_name}")
+
+def predict_random_forest(X_scaled, predictions_df, model_path):
+    """Predict with RandomForest model and add results to predictions_df."""
+    model = joblib.load(model_path)
+    predictions_df['Predicted_random_forest'] = model.predict(X_scaled)
+
+def predict_gradient_boosting(X_scaled, predictions_df, model_path):
+    """Predict with GradientBoosting model, add results and percentiles to predictions_df."""
+    model = joblib.load(model_path)
+    predictions_df['Predicted_gradient_boosting'] = model.predict(X_scaled)
+    try:
+        p5, p95 = extract_percentiles(model, X_scaled)
+        predictions_df['5th_Percentile_gradient_boosting'] = p5
+        predictions_df['95th_Percentile_gradient_boosting'] = p95
+    except ValueError as e:
+        print(f"Warning: {e} for GradientBoosting model")
+
+def predict_xgboost(X_scaled, predictions_df, model_path):
+    """Predict with XGBoost model, add results and percentiles to predictions_df."""
+    model = joblib.load(model_path)
+    predictions_df['Predicted_xgboost'] = model.predict(X_scaled)
+    try:
+        p5, p95 = extract_percentiles(model, X_scaled)
+        predictions_df['5th_Percentile_xgboost'] = p5
+        predictions_df['95th_Percentile_xgboost'] = p95
+    except ValueError as e:
+        print(f"Warning: {e} for XGBoost model")
 
 def main():
     download_database()
@@ -96,25 +122,28 @@ def main():
         X = validate_and_clean_data(X)
         X_scaled = scaler.fit_transform(X)
 
-        for model_type in ['random_forest', 'gradient_boosting', 'xgboost']:
-            model_path = os.path.join(MODELS_DIR, f"{table}_{model_type}.joblib")
-            print(f"Loading model from: {model_path}")
+        # Paths to models
+        model_paths = {
+            'random_forest': os.path.join(MODELS_DIR, f"{table}_random_forest.joblib"),
+            'gradient_boosting': os.path.join(MODELS_DIR, f"{table}_gradient_boosting.joblib"),
+            'xgboost': os.path.join(MODELS_DIR, f"{table}_xgboost.joblib")
+        }
 
-            if not os.path.exists(model_path):
-                raise FileNotFoundError(f"Model file not found: {model_path}")
+        # Check each model type, call its prediction function if model file exists
+        if os.path.exists(model_paths['random_forest']):
+            predict_random_forest(X_scaled, predictions_df, model_paths['random_forest'])
+        else:
+            print(f"RandomForest model file not found for table {table}")
 
-            model = joblib.load(model_path)
-            predictions = model.predict(X_scaled)
-            predictions_df[f'Predicted_{model_type}'] = predictions
+        if os.path.exists(model_paths['gradient_boosting']):
+            predict_gradient_boosting(X_scaled, predictions_df, model_paths['gradient_boosting'])
+        else:
+            print(f"GradientBoosting model file not found for table {table}")
 
-            # Handle models with individual estimators and calculate percentiles if applicable
-            if model_type in ['gradient_boosting', 'xgboost']:
-                try:
-                    p5, p95 = extract_percentiles(model, X_scaled)
-                    predictions_df[f'5th_Percentile_{model_type}'] = p5
-                    predictions_df[f'95th_Percentile_{model_type}'] = p95
-                except ValueError as e:
-                    print(f"Warning: {e} for model {model_type}")
+        if os.path.exists(model_paths['xgboost']):
+            predict_xgboost(X_scaled, predictions_df, model_paths['xgboost'])
+        else:
+            print(f"XGBoost model file not found for table {table}")
 
         save_predictions_to_db(predictions_df, table)
 
