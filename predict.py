@@ -49,7 +49,7 @@ def extract_predictions_from_estimators(model, X_scaled):
     all_preds = []
     if hasattr(model, 'estimators_'):
         for est in model.estimators_:
-            if callable(getattr(est, "predict", None)):
+            if hasattr(est, "predict") and callable(est.predict):
                 all_preds.append(est.predict(X_scaled))
             else:
                 print(f"Skipping an estimator without 'predict' or incorrect structure: {type(est)}")
@@ -92,6 +92,10 @@ def process_table(table):
             continue
 
         model = joblib.load(model_path)
+
+        # Debug: Print the loaded model type and structure
+        print(f"Loaded model type: {type(model)}")
+
         predictions = model.predict(X_scaled)
         predictions_df[f'Predicted_{model_type}'] = predictions
 
@@ -111,7 +115,10 @@ def main():
 
     for table in tables:
         print(f"Processing table: {table}")
-        process_table(table)
+        try:
+            process_table(table)
+        except Exception as e:
+            print(f"Error processing table {table}: {e}")
 
 if __name__ == "__main__":
     main()
