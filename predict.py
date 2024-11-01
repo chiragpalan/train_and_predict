@@ -1,10 +1,10 @@
 import os
 import sqlite3
 import pandas as pd
+import numpy as np
 from sklearn.preprocessing import StandardScaler
 import joblib
 import requests
-import numpy as np
 
 # Paths and configurations
 DATA_DB = 'joined_data.db'
@@ -43,26 +43,28 @@ def load_data_from_table(db_path, table_name):
     conn.close()
     return df
 
-def validate_and_clean_data(X):
-    """Remove infinite and NaN values and replace them with zeroes."""
-    X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
-    return X
-
 def extract_percentiles(model, X_scaled):
     """Extract predictions and calculate 5th and 95th percentiles for models with estimators."""
     all_preds = []
 
     if hasattr(model, 'estimators_'):
         for est in model.estimators_:
-            if hasattr(est, 'predict') and not isinstance(est, np.ndarray):
-                all_preds.append(est.predict(X_scaled))
+            if hasattr(est, 'predict') and callable(getattr(est, 'predict', None)):
+                try:
+                    pred = est.predict(X_scaled)
+                    if isinstance(pred, (np.ndarray, list)):
+                        all_preds.append(pred)
+                    else:
+                        print(f"Skipping estimator with non-numeric predictions: {type(est)}")
+                except Exception as e:
+                    print(f"Error during prediction with estimator {type(est)}: {e}")
             else:
-                print(f"Skipping an estimator without 'predict': {type(est)}")
+                print(f"Skipping an estimator without 'predict' or incorrect structure: {type(est)}")
 
     if not all_preds:
         raise ValueError("No valid estimators with 'predict' method found.")
 
-    all_preds_df = pd.DataFrame(all_preds).T  # Transpose to match input shape
+    all_preds_df = pd.DataFrame(all_preds).T
     p5 = all_preds_df.quantile(0.05, axis=1)
     p95 = all_preds_df.quantile(0.95, axis=1)
     return p5, p95
@@ -75,9 +77,10 @@ def save_predictions_to_db(predictions_df, table_name):
     print(f"Predictions saved to database for table: {table_name}")
 
 def predict_random_forest(X_scaled, predictions_df, model_path):
-    """Predict with RandomForest model and add results to predictions_df."""
+    """Predict with RandomForest model, add results to predictions_df."""
     model = joblib.load(model_path)
     predictions_df['Predicted_random_forest'] = model.predict(X_scaled)
+    print("RandomForest predictions added.")
 
 def predict_gradient_boosting(X_scaled, predictions_df, model_path):
     """Predict with GradientBoosting model, add results and percentiles to predictions_df."""
@@ -87,6 +90,7 @@ def predict_gradient_boosting(X_scaled, predictions_df, model_path):
         p5, p95 = extract_percentiles(model, X_scaled)
         predictions_df['5th_Percentile_gradient_boosting'] = p5
         predictions_df['95th_Percentile_gradient_boosting'] = p95
+        print("Successfully calculated 5th and 95th percentiles for GradientBoosting.")
     except ValueError as e:
         print(f"Warning: {e} for GradientBoosting model")
 
@@ -98,6 +102,7 @@ def predict_xgboost(X_scaled, predictions_df, model_path):
         p5, p95 = extract_percentiles(model, X_scaled)
         predictions_df['5th_Percentile_xgboost'] = p5
         predictions_df['95th_Percentile_xgboost'] = p95
+        print("Successfully calculated 5th and 95th percentiles for XGBoost.")
     except ValueError as e:
         print(f"Warning: {e} for XGBoost model")
 
@@ -119,31 +124,28 @@ def main():
         predictions_df = pd.DataFrame({'Date': dates, 'Actual': y_actual})
 
         scaler = StandardScaler()
-        X = validate_and_clean_data(X)
         X_scaled = scaler.fit_transform(X)
 
-        # Paths to models
         model_paths = {
             'random_forest': os.path.join(MODELS_DIR, f"{table}_random_forest.joblib"),
             'gradient_boosting': os.path.join(MODELS_DIR, f"{table}_gradient_boosting.joblib"),
-            'xgboost': os.path.join(MODELS_DIR, f"{table}_xgboost.joblib")
+            'xgboost': os.path.join(MODELS_DIR, f"{table}_xgboost.joblib"),
         }
 
-        # Check each model type, call its prediction function if model file exists
         if os.path.exists(model_paths['random_forest']):
             predict_random_forest(X_scaled, predictions_df, model_paths['random_forest'])
         else:
-            print(f"RandomForest model file not found for table {table}")
+            print(f"RandomForest model not found for {table}")
 
         if os.path.exists(model_paths['gradient_boosting']):
             predict_gradient_boosting(X_scaled, predictions_df, model_paths['gradient_boosting'])
         else:
-            print(f"GradientBoosting model file not found for table {table}")
+            print(f"GradientBoosting model not found for {table}")
 
         if os.path.exists(model_paths['xgboost']):
             predict_xgboost(X_scaled, predictions_df, model_paths['xgboost'])
         else:
-            print(f"XGBoost model file not found for table {table}")
+            print(f"XGBoost model not found for {table}")
 
         save_predictions_to_db(predictions_df, table)
 
