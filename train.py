@@ -44,20 +44,23 @@ def check_and_clean_data(X):
     """Check for infinity, NaN, or very large values in X and clean them."""
     if not np.isfinite(X.values).all():
         print("Warning: X contains NaN, infinity, or very large values. Cleaning data...")
-        X = X.replace([np.inf, -np.inf], np.nan).fillna(0)  # Replace infinities with NaN, then fill NaN with 0
+        X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
     return X
 
-def train_model(X_train, y_train, model_type):
-    if model_type == 'random_forest':
-        model = RandomForestRegressor(n_estimators=800)
-    elif model_type == 'gradient_boosting':
-        model = GradientBoostingRegressor(n_estimators=800)
-    elif model_type == 'xgboost':
-        model = XGBRegressor(n_estimators=800)
-    else:
-        raise ValueError(f"Unsupported model type: {model_type}")
+def train_random_forest(X_train, y_train, table_name):
+    model = RandomForestRegressor(n_estimators=800)
     model.fit(X_train, y_train)
-    return model
+    save_model(model, table_name, 'random_forest')
+
+def train_gradient_boosting(X_train, y_train, table_name):
+    model = GradientBoostingRegressor(n_estimators=800)
+    model.fit(X_train, y_train)
+    save_model(model, table_name, 'gradient_boosting')
+
+def train_xgboost(X_train, y_train, table_name):
+    model = XGBRegressor(n_estimators=800)
+    model.fit(X_train, y_train)
+    save_model(model, table_name, 'xgboost')
 
 def save_model(model, table_name, model_type):
     filename = f"{MODELS_DIR}/{table_name}_{model_type}.joblib"
@@ -80,14 +83,15 @@ def main():
 
         X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, shuffle=True)
         scaler = StandardScaler()
-        
-        # Clean X_train for any NaN or infinity values
+
+        # Clean and scale X_train
         X_train_cleaned = check_and_clean_data(X_train)
         X_train_scaled = scaler.fit_transform(X_train_cleaned)
 
-        for model_type in ['random_forest', 'gradient_boosting', 'xgboost']:
-            model = train_model(X_train_scaled, y_train, model_type)
-            save_model(model, table, model_type)
+        # Train and save each model separately
+        train_random_forest(X_train_scaled, y_train, table)
+        train_gradient_boosting(X_train_scaled, y_train, table)
+        train_xgboost(X_train_scaled, y_train, table)
 
 if __name__ == "__main__":
     main()
