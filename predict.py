@@ -112,6 +112,9 @@ def process_table(table):
         'gradient_boosting': gradient_boosting_predictions,
         'xgboost': xgboost_predictions
     }
+    
+    # Create an empty DataFrame to store combined predictions
+    combined_predictions = pd.DataFrame({'Date': dates, 'Actual': y_actual})
 
     for model_type in model_types:
         model_path = os.path.join(MODELS_DIR, f"{table}_{model_type}.joblib")
@@ -125,23 +128,18 @@ def process_table(table):
         prediction_func = prediction_functions[model_type]
         try:
             main_prediction, p5, p95 = prediction_func(model, X_scaled)
-            
-            # Prepare DataFrame to save predictions
-            predictions_df = pd.DataFrame({
-                'Table_Name': table,
-                'Date': dates,
-                'Actual': y_actual,
-                f'Predicted_{model_type}': main_prediction,
-                f'5th_Percentile_{model_type}': p5,
-                f'95th_Percentile_{model_type}': p95
-            })
 
-            # Define table name for saving predictions
-            prediction_table_name = f"prediction_{table}_{model_type}"
-            save_predictions_to_db(predictions_df, prediction_table_name)
+            # Add predictions to the combined DataFrame
+            combined_predictions[f'Predicted_{model_type}'] = main_prediction
+            combined_predictions[f'5th_Percentile_{model_type}'] = p5
+            combined_predictions[f'95th_Percentile_{model_type}'] = p95
             
         except Exception as e:
             print(f"Error predicting with {model_type}: {e}")
+
+    # Save the combined predictions DataFrame to the database
+    prediction_table_name = f"prediction_{table}"
+    save_predictions_to_db(combined_predictions, prediction_table_name)
 
 def main():
     download_database()
