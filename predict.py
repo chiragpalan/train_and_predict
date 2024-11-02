@@ -12,10 +12,15 @@ PREDICTIONS_DB = 'data/predictions.db'
 MODELS_DIR = 'models_v1'
 DATA_FOLDER = 'data_v1'
 
-# Ensure folders exist
+# Ensure folders exist, including the data folder for the predictions database
 os.makedirs(MODELS_DIR, exist_ok=True)
 os.makedirs(DATA_FOLDER, exist_ok=True)
-os.makedirs(os.path.dirname(PREDICTIONS_DB), exist_ok=True)
+os.makedirs(os.path.dirname(PREDICTIONS_DB), exist_ok=True)  # Ensure data folder exists
+
+# Confirm directory structure
+print(f"Models directory exists: {os.path.isdir(MODELS_DIR)}")
+print(f"Data folder exists: {os.path.isdir(DATA_FOLDER)}")
+print(f"Predictions database path: {PREDICTIONS_DB}")
 
 def download_database():
     url = 'https://raw.githubusercontent.com/chiragpalan/final_project/main/database/joined_data.db'
@@ -68,10 +73,17 @@ def gradient_boosting_predictions(model, X_scaled):
     return main_prediction, p5, p95
 
 def save_predictions_to_db(predictions_df, prediction_table_name):
-    conn = sqlite3.connect(PREDICTIONS_DB)
-    predictions_df.to_sql(prediction_table_name, conn, if_exists='replace', index=False)
-    conn.close()
-    print(f"Predictions saved to table: {prediction_table_name}")
+    try:
+        # Open a connection to the predictions database
+        conn = sqlite3.connect(PREDICTIONS_DB)
+        print(f"Saving predictions to table: {prediction_table_name} in {PREDICTIONS_DB}")
+        
+        # Write the DataFrame to a new table
+        predictions_df.to_sql(prediction_table_name, conn, if_exists='replace', index=False)
+        conn.close()
+        print(f"Predictions successfully saved to table: {prediction_table_name}")
+    except Exception as e:
+        print(f"Error while saving to database: {e}")
 
 def process_table(table):
     df = load_data_from_table(DATA_DB, table).dropna()
@@ -135,6 +147,12 @@ def main():
             process_table(table)
         except Exception as e:
             print(f"Error processing table {table}: {e}")
+
+    # Check if predictions database file exists after processing
+    if os.path.exists(PREDICTIONS_DB):
+        print(f"Predictions database created at: {PREDICTIONS_DB}")
+    else:
+        print("Predictions database was not created.")
 
 if __name__ == "__main__":
     main()
