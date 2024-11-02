@@ -12,9 +12,15 @@ PREDICTIONS_DB = 'data/predictions.db'
 MODELS_DIR = 'models_v1'
 DATA_FOLDER = 'data_v1'
 
-# Ensure folders exist
+# Ensure folders exist, including the data folder for the predictions database
 os.makedirs(MODELS_DIR, exist_ok=True)
 os.makedirs(DATA_FOLDER, exist_ok=True)
+os.makedirs(os.path.dirname(PREDICTIONS_DB), exist_ok=True)  # Ensure data folder exists
+
+# Confirm directory structure
+print(f"Models directory exists: {os.path.isdir(MODELS_DIR)}")
+print(f"Data folder exists: {os.path.isdir(DATA_FOLDER)}")
+print(f"Predictions database path: {PREDICTIONS_DB}")
 
 def download_database():
     url = 'https://raw.githubusercontent.com/chiragpalan/final_project/main/database/joined_data.db'
@@ -51,31 +57,33 @@ def extract_percentiles(predictions):
     p95 = np.percentile(predictions, 95, axis=0)
     return p5, p95
 
-def random_forest_predictions(model, X_scaled):
-    all_preds = [est.predict(X_scaled) for est in model.estimators_ if hasattr(est, 'predict')]
-    p5, p95 = extract_percentiles(all_preds)
-    main_prediction = model.predict(X_scaled)
-    return main_prediction, p5, p95
-
 def gradient_boosting_predictions(model, X_scaled):
-    print("chirag")
-    all_preds = [est.predict(X_scaled) for est in model.estimators_ if hasattr(est, 'predict')]
-    p5, p95 = extract_percentiles(all_preds)
+    n_estimators = model.n_estimators
+    individual_predictions = np.zeros((X_scaled.shape[0], n_estimators))
+    
+    # Collect predictions from each estimator
+    for i in range(n_estimators):
+        individual_predictions[:, i] = model.estimators_[i, 0].predict(X_scaled)
+
+    # Calculate percentiles
+    p5 = np.percentile(individual_predictions, 5, axis=1)
+    p95 = np.percentile(individual_predictions, 95, axis=1)
     main_prediction = model.predict(X_scaled)
-    print("palan")
+    
     return main_prediction, p5, p95
 
-def xgboost_predictions(model, X_scaled):
-    main_prediction = model.predict(X_scaled)
-    p5 = np.percentile(main_prediction, 5)
-    p95 = np.percentile(main_prediction, 95)
-    return main_prediction, p5, p95
-
-def save_predictions_to_db(predictions_df):
-    conn = sqlite3.connect(PREDICTIONS_DB)
-    predictions_df.to_sql('predictions_all_tables', conn, if_exists='append', index=False)
-    conn.close()
-    print("Predictions saved to database.")
+def save_predictions_to_db(predictions_df, prediction_table_name):
+    try:
+        # Open a connection to the predictions database
+        conn = sqlite3.connect(PREDICTIONS_DB)
+        print(f"Saving predictions to table: {prediction_table_name} in {PREDICTIONS_DB}")
+        
+        # Write the DataFrame to a new table
+        predictions_df.to_sql(prediction_table_name, conn, if_exists='replace', index=False)
+        conn.close()
+        print(f"Predictions successfully saved to table: {prediction_table_name}")
+    except Exception as e:
+        print(f"Error while saving to database: {e}")
 
 def process_table(table):
     df = load_data_from_table(DATA_DB, table).dropna()
@@ -85,8 +93,6 @@ def process_table(table):
     X = df.drop(columns=['Date', 'target_n7d'], errors='ignore')
     y_actual = df['target_n7d']
     dates = df['Date']
-
-    predictions_df = pd.DataFrame({'Table_Name': table, 'Date': dates, 'Actual': y_actual})
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
@@ -113,13 +119,23 @@ def process_table(table):
         prediction_func = prediction_functions[model_type]
         try:
             main_prediction, p5, p95 = prediction_func(model, X_scaled)
-            predictions_df[f'Predicted_{model_type}'] = main_prediction
-            predictions_df[f'5th_Percentile_{model_type}'] = p5
-            predictions_df[f'95th_Percentile_{model_type}'] = p95
+            
+            # Prepare DataFrame to save predictions
+            predictions_df = pd.DataFrame({
+                'Table_Name': table,
+                'Date': dates,
+                'Actual': y_actual,
+                f'Predicted_{model_type}': main_prediction,
+                f'5th_Percentile_{model_type}': p5,
+                f'95th_Percentile_{model_type}': p95
+            })
+
+            # Define table name for saving predictions
+            prediction_table_name = f"prediction_{table}_{model_type}"
+            save_predictions_to_db(predictions_df, prediction_table_name)
+            
         except Exception as e:
             print(f"Error predicting with {model_type}: {e}")
-
-    save_predictions_to_db(predictions_df)
 
 def main():
     download_database()
@@ -131,6 +147,12 @@ def main():
             process_table(table)
         except Exception as e:
             print(f"Error processing table {table}: {e}")
+
+    # Check if predictions database file exists after processing
+    if os.path.exists(PREDICTIONS_DB):
+        print(f"Predictions database created at: {PREDICTIONS_DB}")
+    else:
+        print("Predictions database was not created.")
 
 if __name__ == "__main__":
     main()
