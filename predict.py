@@ -15,6 +15,7 @@ DATA_FOLDER = 'data_v1'
 # Ensure folders exist
 os.makedirs(MODELS_DIR, exist_ok=True)
 os.makedirs(DATA_FOLDER, exist_ok=True)
+os.makedirs(os.path.dirname(PREDICTIONS_DB), exist_ok=True)
 
 def download_database():
     url = 'https://raw.githubusercontent.com/chiragpalan/final_project/main/database/joined_data.db'
