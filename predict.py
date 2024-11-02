@@ -17,11 +17,6 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 os.makedirs(DATA_FOLDER, exist_ok=True)
 os.makedirs(os.path.dirname(PREDICTIONS_DB), exist_ok=True)  # Ensure data folder exists
 
-# Confirm directory structure
-print(f"Models directory exists: {os.path.isdir(MODELS_DIR)}")
-print(f"Data folder exists: {os.path.isdir(DATA_FOLDER)}")
-print(f"Predictions database path: {PREDICTIONS_DB}")
-
 def download_database():
     url = 'https://raw.githubusercontent.com/chiragpalan/final_project/main/database/joined_data.db'
     response = requests.get(url)
@@ -46,18 +41,31 @@ def load_data_from_table(db_path, table_name):
     conn.close()
     return df
 
-def clean_data(X):
-    """Check for infinity, NaN, or very large values in X and clean them."""
-    if not np.isfinite(X.values).all():
-        print("Warning: X contains NaN, infinity, or very large values. Cleaning data...")
-        X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
-    return X
+def clean_data(X, y, dates):
+    """Remove rows with NaN or infinite values from a NumPy array and keep data aligned."""
+    mask = np.isfinite(X).all(axis=1)  # Identify rows without NaN or inf
+    X_clean = X[mask]
+    y_clean = y[mask].reset_index(drop=True)
+    dates_clean = dates[mask].reset_index(drop=True)
+    return X_clean, y_clean, dates_clean
 
 def extract_percentiles(predictions):
     """Calculate 5th and 95th percentiles from an array of predictions."""
     p5 = np.percentile(predictions, 5, axis=0)
     p95 = np.percentile(predictions, 95, axis=0)
     return p5, p95
+
+def random_forest_predictions(model, X_scaled):
+    all_preds = [est.predict(X_scaled) for est in model.estimators_ if hasattr(est, 'predict')]
+    p5, p95 = extract_percentiles(all_preds)
+    main_prediction = model.predict(X_scaled)
+    return main_prediction, p5, p95
+
+def xgboost_predictions(model, X_scaled):
+    main_prediction = model.predict(X_scaled)
+    p5 = np.percentile(main_prediction, 5)
+    p95 = np.percentile(main_prediction, 95)
+    return main_prediction, p5, p95
 
 def gradient_boosting_predictions(model, X_scaled):
     n_estimators = model.n_estimators
@@ -76,11 +84,7 @@ def gradient_boosting_predictions(model, X_scaled):
 
 def save_predictions_to_db(predictions_df, prediction_table_name):
     try:
-        # Open a connection to the predictions database
         conn = sqlite3.connect(PREDICTIONS_DB)
-        print(f"Saving predictions to table: {prediction_table_name} in {PREDICTIONS_DB}")
-        
-        # Write the DataFrame to a new table
         predictions_df.to_sql(prediction_table_name, conn, if_exists='replace', index=False)
         conn.close()
         print(f"Predictions successfully saved to table: {prediction_table_name}")
@@ -88,7 +92,7 @@ def save_predictions_to_db(predictions_df, prediction_table_name):
         print(f"Error while saving to database: {e}")
 
 def process_table(table):
-    df = load_data_from_table(DATA_DB, table).dropna()
+    df = load_data_from_table(DATA_DB, table).dropna()  # Drop rows with NaN in the DataFrame
     if 'Date' not in df.columns:
         raise KeyError("The 'Date' column is missing from the data.")
 
@@ -98,7 +102,9 @@ def process_table(table):
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    X_scaled = clean_data(X_scaled)  # Clean the scaled data
+    
+    # Remove rows with NaN or inf in X_scaled, and align y_actual and dates
+    X_scaled, y_actual, dates = clean_data(X_scaled, y_actual, dates)
 
     model_types = ['random_forest', 'gradient_boosting', 'xgboost']
     prediction_functions = {
@@ -109,8 +115,6 @@ def process_table(table):
 
     for model_type in model_types:
         model_path = os.path.join(MODELS_DIR, f"{table}_{model_type}.joblib")
-        print(f"Loading model from: {model_path}")
-
         if not os.path.exists(model_path):
             print(f"Model file not found: {model_path}")
             continue
@@ -144,13 +148,11 @@ def main():
     tables = get_table_names(DATA_DB)
 
     for table in tables:
-        print(f"Processing table: {table}")
         try:
             process_table(table)
         except Exception as e:
             print(f"Error processing table {table}: {e}")
 
-    # Check if predictions database file exists after processing
     if os.path.exists(PREDICTIONS_DB):
         print(f"Predictions database created at: {PREDICTIONS_DB}")
     else:
