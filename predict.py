@@ -51,14 +51,7 @@ def extract_percentiles(predictions):
     p95 = np.percentile(predictions, 95, axis=0)
     return p5, p95
 
-def random_forest_predictions(model, X_scaled):
-    all_preds = [est.predict(X_scaled) for est in model.estimators_ if hasattr(est, 'predict')]
-    p5, p95 = extract_percentiles(all_preds)
-    main_prediction = model.predict(X_scaled)
-    return main_prediction, p5, p95
-
 def gradient_boosting_predictions(model, X_scaled):
-    # Initialize array for individual predictions for each instance in the test set
     n_estimators = model.n_estimators
     individual_predictions = np.zeros((X_scaled.shape[0], n_estimators))
     
@@ -73,18 +66,11 @@ def gradient_boosting_predictions(model, X_scaled):
     
     return main_prediction, p5, p95
 
-
-def xgboost_predictions(model, X_scaled):
-    main_prediction = model.predict(X_scaled)
-    p5 = np.percentile(main_prediction, 5)
-    p95 = np.percentile(main_prediction, 95)
-    return main_prediction, p5, p95
-
-def save_predictions_to_db(predictions_df):
+def save_predictions_to_db(predictions_df, prediction_table_name):
     conn = sqlite3.connect(PREDICTIONS_DB)
-    predictions_df.to_sql('predictions_all_tables', conn, if_exists='append', index=False)
+    predictions_df.to_sql(prediction_table_name, conn, if_exists='replace', index=False)
     conn.close()
-    print("Predictions saved to database.")
+    print(f"Predictions saved to table: {prediction_table_name}")
 
 def process_table(table):
     df = load_data_from_table(DATA_DB, table).dropna()
@@ -94,8 +80,6 @@ def process_table(table):
     X = df.drop(columns=['Date', 'target_n7d'], errors='ignore')
     y_actual = df['target_n7d']
     dates = df['Date']
-
-    predictions_df = pd.DataFrame({'Table_Name': table, 'Date': dates, 'Actual': y_actual})
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
@@ -122,13 +106,23 @@ def process_table(table):
         prediction_func = prediction_functions[model_type]
         try:
             main_prediction, p5, p95 = prediction_func(model, X_scaled)
-            predictions_df[f'Predicted_{model_type}'] = main_prediction
-            predictions_df[f'5th_Percentile_{model_type}'] = p5
-            predictions_df[f'95th_Percentile_{model_type}'] = p95
+            
+            # Prepare DataFrame to save predictions
+            predictions_df = pd.DataFrame({
+                'Table_Name': table,
+                'Date': dates,
+                'Actual': y_actual,
+                f'Predicted_{model_type}': main_prediction,
+                f'5th_Percentile_{model_type}': p5,
+                f'95th_Percentile_{model_type}': p95
+            })
+
+            # Define table name for saving predictions
+            prediction_table_name = f"prediction_{table}_{model_type}"
+            save_predictions_to_db(predictions_df, prediction_table_name)
+            
         except Exception as e:
             print(f"Error predicting with {model_type}: {e}")
-
-    save_predictions_to_db(predictions_df)
 
 def main():
     download_database()
