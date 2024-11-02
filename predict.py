@@ -47,7 +47,7 @@ def load_data_from_table(db_path, table_name):
     return df
 
 def clean_data(X):
-   """Check for infinity, NaN, or very large values in X and clean them."""
+    """Check for infinity, NaN, or very large values in X and clean them."""
     if not np.isfinite(X.values).all():
         print("Warning: X contains NaN, infinity, or very large values. Cleaning data...")
         X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
