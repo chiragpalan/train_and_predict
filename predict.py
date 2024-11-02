@@ -8,7 +8,7 @@ import requests
 
 # Paths and configurations
 DATA_DB = 'joined_data.db'
-PREDICTIONS_DB = 'data/predictions.db'
+PREDICTIONS_DB = 'data/predictions_v1.db'
 MODELS_DIR = 'models_v1'
 DATA_FOLDER = 'data_v1'
 
