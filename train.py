@@ -44,7 +44,8 @@ def check_and_clean_data(X):
     """Check for infinity, NaN, or very large values in X and clean them."""
     if not np.isfinite(X.values).all():
         print("Warning: X contains NaN, infinity, or very large values. Cleaning data...")
-        X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
+        X = X.replace([np.inf, -np.inf], np.nan)
+        X = X.dropna()
     return X
 
 def train_random_forest(X_train, y_train, table_name):
