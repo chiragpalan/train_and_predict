@@ -5,6 +5,7 @@ from sklearn.preprocessing import StandardScaler
 import joblib
 import numpy as np
 import requests
+import xgboost as xgb
 
 # Paths and configurations
 DATA_DB = 'joined_data.db'
